@@ -1005,6 +1005,11 @@ def fitness(joueur): #Win rate against Sarkis Team.
 	return wins / n
 
 
+##Side note à la volée : Approximation de l'algo de Qlearning grâce à un réseau de neurones
+##Le but est de fournir une approximation de la fonction Q (obviously)
+##On décide de comment jouer par une simple recherche de max sur Q, après ça.
+
+
 ##
 g = lesJoueurs()
 for t in range(50):
