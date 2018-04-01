@@ -4,7 +4,15 @@ import math
 import numpy as np
 import pickle
 import gc
+import time
 gc.enable()
+
+t = time.time()
+
+def top():
+	global t
+	print(time.time() - t)
+	t = time.time()
 
 def pack(obj, fileName):
 	"""Fonction permettant de sérialiser obj dans le fichier fileName."""
@@ -67,12 +75,46 @@ class BeloteServer:
 
 class Manche: #Sert a stocker des trucs
 
-    def __init__(self, joueurs): #TODO Tout déclarer proprement
-        self.joueurs = joueurs
-        self.plis = []
+	def __init__(self, joueurs): #TODO Tout déclarer proprement
+		self.joueurs = joueurs
+		self.plis = []
 
-def send(text):
-    s.send(text)
+	def __repr__(self):
+		s = "--------------------------------\n\n"
+		s += "*********** ANNONCES : ***********\n"
+		s += "\n"
+		g = self.joueurs
+		for k in self.encheresLog:
+			id = k[0]
+			montant = k[1]
+			couleur = k[2]
+			name = g[id].name
+			s += "\n"
+			s += name + " annonce : " + str(montant) + " | " + couleur
+			s += "\n"
+		s += "L'équipe " + str(self.encheresLog[-1][0] % 2) + " a pris à " + str(self.encheresLog[-1][1]) + " | " + self.encheresLog[-1][2]
+		s += "\n"
+		s += "*********** JEU : ***********"
+		s += "\n"
+		tour = 0
+		for k in self.plis:
+			s += "Tour : " + srt(tour) + "\n"
+			commence = k[0]
+			gagne = k[1].index #C'est bizarre, ça, TODO regarder d'ou ca vient
+			card = k[2]
+			i = commence
+			for j in range(0,4):
+				s += g[i].name + " : " + card[j].__repr__() + "\n"
+				i += 1
+				if i > 3:
+					i = 0
+			s += g[gagne].name + " remporte le pli !\n"
+			tour += 1
+		s += "*********** RÉSULTAT : ***********\n"
+		s += "L'équipe " + str(self.winner) + " a gagné !\n"
+		s += "Équipe " + str(self.winner) + " : " + str(manche.points) + "\n"
+		s += "Équipe " + str(- 1 * self.winner + 1) + " : " + str(162 - manche.points) + "\n"
+		return s
 
 class Carte:
 
@@ -144,20 +186,22 @@ def createDeck(manche):
     return PAKET
 
 class Joueur:
-    def __init__(self, index, partenaire, namae, JAIPADENOM):
-        self.index = index
-        self.main = []
-        self.partenaire = partenaire
-        self.name = namae
-        self.JAIPADENOM = JAIPADENOM #Strategy Pattern in disguise
-        self.JAIPADENOM.joueur = self
+	def __init__(self, index, partenaire, namae, JAIPADENOM):
+		self.index = index
+		self.main = []
+		self.partenaire = partenaire
+		self.name = namae
+		self.JAIPADENOM = JAIPADENOM #Strategy Pattern in disguise
+		self.JAIPADENOM.joueur = self
 
-    def annoncer(self, manche):
-        return self.JAIPADENOM.annonce(self.main, manche)
+	def annoncer(self, manche):
+		return self.JAIPADENOM.annonce(self.main, manche)
 
-    def jouer(self, manche):
-        #print("tour de : " + self.name)
-        return self.JAIPADENOM.jouerUneCarte(self.main, manche)
+	def jouer(self, manche):
+		return self.JAIPADENOM.jouerUneCarte(self.main, manche)
+
+	def end(self, manche):
+		self.JAIPADENOM.end(manche)	
 
 def jaidezatouts(tab, manche):
     a = manche.atout
@@ -179,15 +223,20 @@ class Sarkis: #Noob bot
         self.comptelezatouts = 0
         self.strategie=""
         self.flag=True  #TODO reinitialiser dans les annonces
-        self.start=True
-        self.monannonce='NoColor'
-
-    def end(self, gagnant, points):
-        self.start = True
+        self.mesannonces=[]
     
+    def end(self, manche):
+        pass
+ 
     def debut(self,main,manche):
         self.paketo = manche.pack
         self.devine = {}
+        self.dico={}
+        self.appel={}
+        self.start=True
+        self.comptelezatouts=0
+        self.compte=[]
+        self.mesannonces=[]
         for k in self.paketo.cartes:
                 self.devine[k]=[0,1,1,1]
         for k in main:
@@ -207,19 +256,18 @@ class Sarkis: #Noob bot
             self.strategie="def"
     
     def annonce(self,main,manche):
-        if self.start:
+        if len(manche.encheresLog)<=4:
             self.debut(main,manche)
-            self.start=False
-        self.dico={}
-        self.appel={}
+        self.dico={}    #dico contiendra les plis maitres a chaque couleur
+        self.appel={}   #appel contiendra les appels à chaque couleur
         #print(main)
-        for couleur in ["coeur","carreau","pique","trefle"]:
+        for couleur in ["coeur","carreau","pique","trefle"]:  #boucle de génération des plis maitres
             manche.atout=couleur
-            self.o=self.plimaitre(main,manche)
+            self.o=self.plimaitre(main,manche)  #o est un tableau intermediaire contenant les plis maitres
             #print(self.o)
             self.o.append(self.atout_main(main,manche))
             self.dico[couleur]=self.o
-        for couleur in ["coeur","carreau","pique","trefle"]:
+        for couleur in ["coeur","carreau","pique","trefle"]: #boucle de génération des valeurs des potentiels appels
             self.appel[couleur]=0
             self.A=False
             if len(self.dico[couleur])>1:
@@ -231,27 +279,27 @@ class Sarkis: #Noob bot
                     elif self.dico[couleur][-1]>=5:
                         self.appel[couleur]=100
                     self.appel[couleur]+=10*(len(self.dico[couleur])-2)
-        self.theappel = (self.appel["coeur"],"coeur")
-        #print(self.theappel)
-        for couleur in ["carreau","pique","trefle"]:
-            if self.appel[couleur] >= self.theappel[0]:
-                self.theappel = (self.appel[couleur], couleur)
+        self.theappel = (self.appel["coeur"],"coeur")                #ici on compare les appels solo
+        #print(self.theappel)                                        #
+        for couleur in ["carreau","pique","trefle"]:                 #  
+            if self.appel[couleur] >= self.theappel[0]:              #
+                self.theappel = (self.appel[couleur], couleur)       #
                 #print(self.theappel)
-        if len(manche.encheresLog)>=3:
-            if manche.encheresLog[-2][2]!=self.monannonce and manche.encheresLog[-2][0]%2==self.joueur.index:
+        if len(manche.encheresLog)>=3:          #on considère le fait de surrenchérir a la couleur du partenaire
+            if (manche.encheresLog[-2][2] not in self.mesannonces) and manche.encheresLog[-2][0]%2==self.joueur.index: #des closes pour ne pas monter à l'infini à la poursuite du bonheur
                 if manche.encheresLog[-2][0]!=self.joueur.index:
                     manche.atout=manche.encheresLog[-2][2]
                     b=self.plimaitre(main,manche)
                 
                     self.encherepart=manche.encheresLog[-2][1]
                     self.encherepart+=10*(len(b))
-                    if self.theappel[0]<=self.encherepart:
+                    if self.theappel[0]<=self.encherepart:    #comparaison entre lappel solo et l'appel duo
                         self.theappel=(self.encherepart,manche.atout)
         #print(self.theappel[0])
         #print(manche.encheresLog[-1][1])
         if manche.encheresLog[-1][1]<self.theappel[0]:
 
-            self.monannonce=self.theappel[1]
+            self.mesannonces.append(self.theappel[1])  #pour ne pas monter à l'infini à la poursuite du bonheur
             a=(self.joueur.index,)+(self.theappel)
             #print(a)
             return a
@@ -282,12 +330,12 @@ class Sarkis: #Noob bot
         if self.ilrestedezatouts(manche)==0:
             self.strategie="atk"
             
-        if self.flag:
+        if self.start:
             if manche.enchere[0]%2 == self.joueur.index%2:
                 self.strategie = "atk"
             else:
                 self.strategie="def"
-            self.flag=False
+            self.start=False
         if manche.plis!=[]:
             for i in manche.plis[-1][2]:
                 self.devine[i] = [0,0,0,0]
@@ -604,181 +652,459 @@ class Human:
         main.remove(carte)
         return carte
     
-    def end(self, a,b):
+    def end(self, manche):
         pass
 
 def sigmoid(z): #sigmoid function, faut peut-être l'étaler... z / alpha, alpha > 1, alpha(z);
         return 1 / ( 1 + np.exp(-1 * np.clip(z, -35, 35)))
 
 class NNLBot:
-    def __init__(self):
-        self.NB_HIDDEN = 410
-        self.DIM_IN = 205 #TODO ca va probablement changer
-        self.DIM_OUT = 2 # 3 ?
+	def __init__(self):
+		self.NB_HIDDEN = 410
+		self.DIM_IN = 206 #TODO ca va probablement changer
+		self.DIM_OUT = 2 # 3 ?
+
+		self.weights1 = np.random.randn(self.NB_HIDDEN, self.DIM_IN)
+		self.bias1 = np.random.randn(self.NB_HIDDEN, 1)
+
+		self.weights2 = np.random.randn(self.DIM_OUT, self.NB_HIDDEN)
+		self.bias2 = np.random.randn(self.DIM_OUT, 1)
+		self.ins = []
+		self.hids = []
+		self.outs = []
+
+	def generateIN(self, manche, main): #on cree le vecteur d'entree du nn ||| len(IN) = 1 + 31 * 3 + 8 * 5 * 2 + 8 * 2 + 8 * 2 = 206 TODO : Est-ce raisonnable d'utiliser des valeurs = 0 ?
+		IN = []
+		colorValues = {"NoColor" : -1, "pique" : 1, "coeur" : 2, "trefle" : 3, "carreau" : 4}
+		cardValues = {"7" : 1, "8" : 2, "9" : 3, "10" : 4, "valet" : 5, "dame" : 6, "roi" : 7, "1" : 8}
+		IN.append(manche.lePremier)
+		for k in range(31): #Encheres TODO, nbre max (en prenant en compte contre et surcontre, + 2?)
+			if k < len(manche.encheresLog):
+				IN.append(manche.encheresLog[k][0])
+				IN.append(manche.encheresLog[k][1])
+				IN.append(colorValues[manche.encheresLog[k][2]])
+			else:
+				IN.append(0)
+				IN.append(0)
+				IN.append(0)
+		for k in range(8): #Les plis
+			try:
+				test = manche.pliEnCours #Si ca rate, go except
+				if k < len(manche.plis):
+					IN.append(manche.plis[k][0])
+					IN.append(manche.plis[k][1])
+					for l in range(4):
+						IN.append(cardValues[manche.plis[k][2][l].valeur])
+						IN.append(colorValues[manche.plis[k][2][l].couleur])
+				elif k == len(manche.plis): #Peut etre le mettre a part (endroit fixe ?) (pli en cours)
+					IN.append(manche.joueurs[0].index)
+					IN.append(0)
+					for l in range(4):
+						if l < len(manche.pliEnCours):
+							IN.append(cardValues[manche.pliEnCours[l].valeur])
+							IN.append(colorValues[manche.pliEnCours[l].couleur])
+						else:
+							IN.append(0)
+							IN.append(0)
+				else:
+					IN.append(0)
+					IN.append(0)
+					for l in range(4):
+						IN.append(0)
+						IN.append(0)
+			except:
+				IN.append(0)
+				IN.append(0)
+				for l in range(4):
+					IN.append(0)
+					IN.append(0)
+		for k in range(8):#Main
+			if k < len(main):
+				IN.append(cardValues[main[k].valeur])
+				IN.append(colorValues[main[k].couleur])
+			else:
+				IN.append(0)
+				IN.append(0)
+		for k in range(8):#Cartes jouables de la main (TODO, redondant ?) TODO le présenter différemment ?
+			try: #Meme feinte que plus haut
+				j = cartesJouables(self.joueur, manche)
+				if k < len(j):
+					IN.append(cardValues[j[k].valeur])
+					IN.append(colorValues[j[k].couleur])
+				else:
+					IN.append(0)
+					IN.append(0)
+			except:
+				IN.append(0)
+				IN.append(0)
+		return IN
+
+	def annonce(self, main, manche):#TODO pas super content de mon implementation.
+		IN = np.array([self.generateIN(manche, main)])
+		HIDDEN = self.forward_pass(IN, self.weights1, self.bias1)
+		OUT = self.forward_pass(HIDDEN, self.weights2, self.bias2)
+		self.ins.append(IN)
+		self.hids.append(HIDDEN)
+		self.outs.append(OUT)
+		colors = ["pique", "carreau", "trefle", "coeur"] #Faire un cas passe ?
+		try:
+			c = colors[math.floor(OUT[0][0] * 4)]
+		except:
+			c = colors[-1] #Cas où ca fait 4
+		e = manche.encheresLog[-1]
+		a = e[1]
+		v = a + 10 * math.floor(OUT[0][1] * (17 - a / 10)) #Cas 0 TODO
+		if v == a:
+			return e
+		return (self.joueur.index, v, c)
         
-        self.weights1 = np.random.randn(self.NB_HIDDEN, self.DIM_IN)
-        self.bias1 = np.random.randn(self.NB_HIDDEN, 1)
+	def jouerUneCarte(self, main, manche):
+		IN = np.array([self.generateIN(manche, main)])
+		HIDDEN = self.forward_pass(IN, self.weights1, self.bias1)
+		OUT = self.forward_pass(HIDDEN, self.weights2, self.bias2)
+		self.ins.append(IN)
+		self.hids.append(HIDDEN)
+		self.outs.append(OUT)
+		j = cartesJouables(self.joueur, manche)
+		try:
+			carte = j[math.floor(OUT[0][0] * len(j))] # != 8 à priori, à checker (et mert', y'a un cas limite... )
+		except:
+			carte = j[-1] #Cas où la précision sur les float donne len(j).
+		main.remove(carte)
+		return carte
 
-        self.weights2 = np.random.randn(self.DIM_OUT, self.NB_HIDDEN)
-        self.bias2 = np.random.randn(self.DIM_OUT, 1)
-        self.ins = []
-        self.hids = []
-        self.outs = []
 
-    def generateIN(self, manche, main): #on cree le vecteur d'entree du nn ||| len(IN) = 31 * 3 + 8 * 5 * 2 + 8 * 2 + 8 * 2 = 205 TODO : Est-ce raisonnable d'utiliser des valeurs = 0 ?
-        IN = []
-        colorValues = {"NoColor" : -1, "pique" : 1, "coeur" : 2, "trefle" : 3, "carreau" : 4}
-        cardValues = {"7" : 1, "8" : 2, "9" : 3, "10" : 4, "valet" : 5, "dame" : 6, "roi" : 7, "1" : 8}
-        for k in range(31): #Encheres TODO, nbre max (en prenant en compte contre et surcontre, + 2?)
-            if k < len(manche.encheresLog):
-                try: #TODO, déberkifier
-                    IN.append(manche.encheresLog[k][0])
-                except:
-                    IN.append(0)
-                IN.append(manche.encheresLog[k][1])
-                IN.append(colorValues[manche.encheresLog[k][2]])
-            else:
-                IN.append(0)
-                IN.append(0)
-                IN.append(0)
-        for k in range(8):
-            try:
-                test = manche.pliEnCours #Si ca rate, go except
-                if k < len(manche.plis):
-                    IN.append(manche.plis[k][0])
-                    IN.append(manche.plis[k][1])
-                    for l in range(4):
-                        IN.append(cardValues[manche.plis[k][2][l].valeur])
-                        IN.append(colorValues[manche.plis[k][2][l].couleur])
-                elif k == len(manche.plis): #Peut etre le mettre a part (endroit fixe ?) (pli en cours)
-                    IN.append(manche.joueurs[0].index)
-                    IN.append(0)
-                    for l in range(4):
-                        if l < len(manche.pliEnCours):
-                            IN.append(cardValues[manche.pliEnCours[l].valeur])
-                            IN.append(colorValues[manche.pliEnCours[l].couleur])
-                        else:
-                            IN.append(0)
-                            IN.append(0)
-                else:
-                    IN.append(0)
-                    IN.append(0)
-                    for l in range(4):
-                        IN.append(0)
-                        IN.append(0)
-            except:
-                IN.append(0)
-                IN.append(0)
-                for l in range(4):
-                    IN.append(0)
-                    IN.append(0)
-        for k in range(8):
-            if k < len(main):
-                IN.append(cardValues[main[k].valeur])
-                IN.append(colorValues[main[k].couleur])
-            else:
-                IN.append(0)
-                IN.append(0)
-        for k in range(8):
-            try: #Meme feinte que plus haut
-                j = cartesJouables(self.joueur, manche)
-                if k < len(j):
-                    IN.append(cardValues[j[k].valeur])
-                    IN.append(colorValues[j[k].couleur])
-                else:
-                    IN.append(0)
-                    IN.append(0)
-            except:
-                IN.append(0)
-                IN.append(0)
-        return IN
+	def forward_pass(self, IN, W, B):#Passage d'une rangée de neurones à la suivante.
+		result = np.dot(W, IN.transpose()).transpose() # - B TODO
+		return sigmoid(result)
 
-    def annonce(self, main, manche):#TODO pas super content de mon implementation.
-        IN = np.array([self.generateIN(manche, main)])
-        HIDDEN = self.forward_pass(IN, self.weights1, self.bias1)
-        OUT = self.forward_pass(HIDDEN, self.weights2, self.bias2)
-        self.ins.append(IN)
-        self.hids.append(HIDDEN)
-        self.outs.append(OUT)
-        colors = ["pique", "carreau", "trefle", "coeur"] #Faire un cas passe ?
-        try:
-            c = colors[math.floor(OUT[0][0] * 4)]
-        except:
-            c = colors[-1] #Cas où ca fait 4
-        e = manche.encheresLog[-1]
-        a = e[1]
-        v = a + 10 * math.floor(OUT[0][1] * (17 - a / 10)) #Cas 0 TODO
-        if v == a:
-            return e
-        return (self.joueur.index, v, c)
+	def backprop(self, manche): #TODO Attention ! C'est pas en 2D !!!!!
+		if self.joueur.index % 2 == manche.winner:
+			c = -1 #win -> diminution des pertes
+		else:
+			c = 1
+		for i in range(len(self.ins)):
+			IN = self.ins[i]
+			HIDDEN = self.hids[i]
+			OUT = self.outs[i]
+		for k in range(self.DIM_OUT): #H -> O | W
+			for l in range(self.NB_HIDDEN):
+				MAGIE = 0.9 #TODO
+				nab_e_o = OUT[k] * manche.points * c #A à déterminer, en fonction d'un tas de truc, première approx, points de la manche + signe, et c'est peut-etre trop violent la
+				nab_o_z = OUT[k] * (1 - OUT[k])
+				nab_z_w = HIDDEN[l]
+				self.weights2[k][l] = self.weights2[k][l] - MAGIE * (nab_e_o * nab_o_z * nab_z_w)
+		for k in range(self.NB_HIDDEN):
+			for l in range(self.DIM_IN):
+				nab_e_o = 0
+				for m in range(self.DIM_OUT):
+					nab_e_o += OUT[m] * (1 - OUT[m]) * self.weights2[m][k]
+				nab_o_z = HIDDEN[k] * (1 - HIDDEN[k])
+				nab_z_w = IN[l]
+				self.weights1[k][l] = self.weights1[k][l] - MAGIE * (nab_e_o * nab_o_z * nab_z_w)
+
+	def backpropbis(self, manche): #TODO
+		if self.joueur.index % 2 == manche.winner:
+			c = -1 #win -> diminution des pertes
+		else:
+			c = 1
+		MAGIE = 0.9 #TODO
+		for i in range(len(self.ins)):
+			IN = self.ins[i]
+			HIDDEN = self.hids[i]
+			OUT = self.outs[i]
+			nab_E_W2 = (c * manche.points / 162) * ( np.dot((OUT * OUT * (1 - OUT)).transpose(), HIDDEN) ) #Version produit matriciel ultra compact, plus rapide avec numpy. #TODO vérifier si il y a pas un OUT en trop (à priori non)
+			self.weights2 -= MAGIE * nab_E_W2
+			nab_E_W1 = np.dot((np.dot(OUT * (1 - OUT), self.weights2) * ( HIDDEN * (1 - HIDDEN) )).transpose(), IN) #TODO vérifier s'il manque pas un facteur (s - o) théorique donc un A * o pratique... (à priori oui)
+			self.weights1 -= MAGIE * nab_E_W1
         
-    def jouerUneCarte(self, main, manche):
-        IN = np.array([self.generateIN(manche, main)])
-        HIDDEN = self.forward_pass(IN, self.weights1, self.bias1)
-        OUT = self.forward_pass(HIDDEN, self.weights2, self.bias2)
-        self.ins.append(IN)
-        self.hids.append(HIDDEN)
-        self.outs.append(OUT)
-        j = cartesJouables(self.joueur, manche)
-        try:
-            carte = j[math.floor(OUT[0][0] * len(j))] # != 8 à priori, à checker (et mert', y'a un cas limite... )
-        except:
-            carte = j[-1] #Cas où la précision sur les float donne len(j).
-        main.remove(carte)
-        return carte
+	def clear(self):
+		self.ins = []
+		self.outs = []
+		self.hids = []
+
+	def end(self, manche):
+		self.backpropbis(manche)
+		self.clear()
 
 
-    def forward_pass(self, IN, W, B):#Passage d'une rangée de neurones à la suivante.
-        result = np.dot(W, IN.transpose()).transpose() # - B TODO
-        return sigmoid(result)
+def sqrt_ex(z): #Dérivée infinie en 0... On suppose que ça n'arrive pas et on croise les doigts ? Oué
+	a = np.sqrt(np.abs(z))
+	for i in range(len(z)):
+		for j in range(len(z[i])):
+			if a[i][j] != 0:
+				a[i][j] *= z[i][j] / np.abs(z[i][j])
+	return a
 
-    def backprop(self, manche): #TODO Attention ! C'est pas en 2D !!!!!
-        if self.joueur.index % 2 == manche.winner:
-            c = -1 #win -> diminution des pertes
-        else:
-            c = 1
-        for i in range(len(self.ins)):
-            IN = self.ins[i]
-            HIDDEN = self.hids[i]
-            OUT = self.outs[i]
-            for k in range(self.DIM_OUT): #H -> O | W
-                for l in range(self.NB_HIDDEN):
-                    MAGIE = 0.9 #TODO
-                    nab_e_o = OUT[k] * manche.points * c #A à déterminer, en fonction d'un tas de truc, première approx, points de la manche + signe, et c'est peut-etre trop violent la
-                    nab_o_z = OUT[k] * (1 - OUT[k])
-                    nab_z_w = HIDDEN[l]
-                    self.weights2[k][l] = self.weights2[k][l] - MAGIE * (nab_e_o * nab_o_z * nab_z_w)
-            for k in range(self.NB_HIDDEN):
-                for l in range(self.DIM_IN):
-                    nab_e_o = 0
-                    for m in range(self.DIM_OUT):
-                        nab_e_o += OUT[m] * (1 - OUT[m]) * self.weights2[m][k]
-                    nab_o_z = HIDDEN[k] * (1 - HIDDEN[k])
-                    nab_z_w = IN[l]
-                    self.weights1[k][l] = self.weights1[k][l] - MAGIE * (nab_e_o * nab_o_z * nab_z_w)
+class QNN:
 
-    def backpropbis(self, manche): #TODO
-        if self.joueur.index % 2 == manche.winner:
-            c = -1 #win -> diminution des pertes
-        else:
-            c = 1
-        MAGIE = 0.9 #TODO
-        for i in range(len(self.ins)):
-            IN = self.ins[i]
-            HIDDEN = self.hids[i]
-            OUT = self.outs[i]
-            nab_E_W2 = (c * manche.points / 162) * ( np.dot((OUT * OUT * (1 - OUT)).transpose(), HIDDEN) ) #Version produit matriciel ultra compact, plus rapide avec numpy. #TODO vérifier si il y a pas un OUT en trop (à priori non)
-            self.weights2 -= MAGIE * nab_E_W2
-            nab_E_W1 = np.dot((np.dot(OUT * (1 - OUT), self.weights2) * ( HIDDEN * (1 - HIDDEN) )).transpose(), IN) #TODO vérifier s'il manque pas un facteur (s - o) théorique donc un A * o pratique... (à priori oui)
-            self.weights1 -= MAGIE * nab_E_W1
-        
-    def clear(self):
-        self.ins = []
-        self.outs = []
-        self.hids = []
+	def __init__(self):
+		self.NB_HIDDEN_1 = 100
+		self.DIM_IN_1 = 113 #TODO ca va probablement changer
+		self.DIM_OUT_1 = 1
+		
+		self.weights1_1 = np.random.randn(self.NB_HIDDEN_1, self.DIM_IN_1)
 
-    def end(self, winner, points):
-        pass
+		self.weights2_1 = np.random.randn(self.DIM_OUT_1, self.NB_HIDDEN_1)
+
+		self.Qs_1 = []
+		self.ins_1 = []
+		self.hids_1 = []
+		self.outs_1 = []
+		
+		self.NB_HIDDEN_2 = 410
+		self.DIM_IN_2 = 207 #TODO ca va probablement changer
+		self.DIM_OUT_2 = 1
+		
+		self.weights1_2 = np.random.randn(self.NB_HIDDEN_2, self.DIM_IN_2)
+
+		self.weights2_2 = np.random.randn(self.DIM_OUT_2, self.NB_HIDDEN_2)
+
+		self.Qs_2 = []
+		self.ins_2 = []
+		self.hids_2 = []
+		self.outs_2 = []
+
+	def end(self, manche):
+		self.backprop_1(manche)
+		self.backprop2_2(manche)	
+
+		self.Qs_2 = []
+		self.ins_2 = []
+		self.hids_2 = []
+		self.outs_2 = []
+		self.Qs_1 = []
+		self.ins_1 = []
+		self.hids_1 = []
+		self.outs_1 = []
+
+	def generateIN_1(self, manche, main, action):#DIM = 113
+		IN = []
+		colorValues = {"NoColor" : -1, "pique" : 1, "coeur" : 2, "trefle" : 3, "carreau" : 4}
+		cardValues = {"7" : 1, "8" : 2, "9" : 3, "10" : 4, "valet" : 5, "dame" : 6, "roi" : 7, "1" : 8}
+		IN.append(self.joueur.index)
+		IN.append(action[0])
+		IN.append(colorValues[action[1]])
+		IN.append(manche.lePremier)
+		for k in range(31):
+			if k < len(manche.encheresLog):
+				IN.append(manche.encheresLog[k][0])
+				IN.append(manche.encheresLog[k][1])
+				IN.append(colorValues[manche.encheresLog[k][2]])
+			else:
+				IN.append(0)
+				IN.append(0)
+				IN.append(0)
+		for k in range(8):
+			IN.append(cardValues[main[k].valeur])
+			IN.append(colorValues[main[k].couleur])
+		return IN
+	
+
+	def generateIN_2(self, manche, main, action): #on cree le vecteur d'entree du nn ||| len(IN) = 1 + 1 + 31 * 3 + 8 * 5 * 2 + 8 * 2 + 8 * 2 = 207 TODO : Est-ce raisonnable d'utiliser des valeurs = 0 ?
+		IN = [action] #Ca retourne un tableau 1D
+		colorValues = {"NoColor" : -1, "pique" : 1, "coeur" : 2, "trefle" : 3, "carreau" : 4}
+		cardValues = {"7" : 1, "8" : 2, "9" : 3, "10" : 4, "valet" : 5, "dame" : 6, "roi" : 7, "1" : 8}
+		IN.append(manche.lePremier)
+		for k in range(31): #Encheres TODO, nbre max (en prenant en compte contre et surcontre, + 2?)
+			if k < len(manche.encheresLog):
+				IN.append(manche.encheresLog[k][0])
+				IN.append(manche.encheresLog[k][1])
+				IN.append(colorValues[manche.encheresLog[k][2]])
+			else:
+				IN.append(0)
+				IN.append(0)
+				IN.append(0)
+		for k in range(8): #Les plis
+			try:
+				test = manche.pliEnCours #Si ca rate, go except
+				if k < len(manche.plis):
+					IN.append(manche.plis[k][0])
+					IN.append(manche.plis[k][1])
+					for l in range(4):
+						IN.append(cardValues[manche.plis[k][2][l].valeur])
+						IN.append(colorValues[manche.plis[k][2][l].couleur])
+				elif k == len(manche.plis): #Peut etre le mettre a part (endroit fixe ?) (pli en cours)
+					IN.append(manche.joueurs[0].index)
+					IN.append(0)
+					for l in range(4):
+						if l < len(manche.pliEnCours):
+							IN.append(cardValues[manche.pliEnCours[l].valeur])
+							IN.append(colorValues[manche.pliEnCours[l].couleur])
+						else:
+							IN.append(0)
+							IN.append(0)
+				else:
+					IN.append(0)
+					IN.append(0)
+					for l in range(4):
+						IN.append(0)
+						IN.append(0)
+			except:
+				IN.append(0)
+				IN.append(0)
+				for l in range(4):
+					IN.append(0)
+					IN.append(0)
+		for k in range(8):#Main
+			if k < len(main):
+				IN.append(cardValues[main[k].valeur])
+				IN.append(colorValues[main[k].couleur])
+			else:
+				IN.append(0)
+				IN.append(0)
+		for k in range(8):#Cartes jouables de la main (TODO, redondant ?) TODO le présenter différemment ?
+			try: #Meme feinte que plus haut
+				j = cartesJouables(self.joueur, manche)
+				if k < len(j):
+					IN.append(cardValues[j[k].valeur])
+					IN.append(colorValues[j[k].couleur])
+				else:
+					IN.append(0)
+					IN.append(0)
+			except:
+				IN.append(0)
+				IN.append(0)
+		return IN
+
+	def feed_forward(self, W, IN):
+		N = np.dot(W, IN.transpose()).transpose()
+		return sqrt_ex(N)
+
+	def annonce(self, main, manche):
+		enchereActuelle = manche.encheresLog[-1]
+		m = None
+		a = None
+		truc = None
+		machin = None
+		bidule = None
+		for k in range(7, 18):
+			v = k * 10
+			if v >= enchereActuelle[1]:
+				for c in ["pique", "carreau", "trefle", "coeur"]:
+					IN = np.array([self.generateIN_1(manche, main, [v, c])])
+					H = self.feed_forward(self.weights1_1, IN)
+					O = self.feed_forward(self.weights2_1, H)
+					q = O[0][0]
+					if m == None or q > m:
+						truc = IN
+						machin = H
+						bidule = O
+						a = [v, c]
+						m = q
+		self.Qs_1.append(m)
+		self.ins_1.append(truc)
+		self.hids_1.append(machin)
+		self.outs_1.append(bidule)
+		return (self.joueur.index, a[0], a[1])
+						
+	def jouerUneCarte(self, main, manche):
+		i = 0
+		m = None
+		truc = None
+		machin = None
+		bidule = None
+		for k in range(len(main)):#Recherche du meilleur Q issou.
+			IN = np.array([self.generateIN_2(manche, main, k + 1)]) #2D
+			H = self.feed_forward(self.weights1_2, IN)
+			O = self.feed_forward(self.weights2_2, H)
+			v = O[0][0]
+			if m == None or v > m:#lazy
+				m = v
+				i = k
+				truc = IN
+				machin = H
+				bidule = O
+		self.Qs_2.append(m)
+		self.ins_2.append(truc)
+		self.hids_2.append(machin)
+		self.outs_2.append(bidule)
+		carte = main[i]
+		main.remove(carte)
+		return carte
+	
+	def train_2(self, IN, T, tour):
+		constante = 0.9 #TODO
+		nab_E_s = self.outs_2[tour][0][0] - T
+		nab_s_z = 1 / (2 * np.abs(self.outs_2[tour][0][0]))
+		nab_E_w2 = self.hids_2[tour] * nab_E_s * nab_s_z
+		self.weights2_2 -= constante * nab_E_w2
+		for k in range(self.NB_HIDDEN_2):
+			nab_E_h = self.weights2_2[0][k] * (self.outs_2[tour][0][0] - T) / (2 * np.abs(self.outs_2[tour][0][0]) )
+			for l in range(self.DIM_IN_2):
+				nab_h_w1 = IN[0][l] / (2 * np.abs(self.hids_2[tour][0][k]))
+				nab_E_w1 = nab_E_h * nab_h_w1
+				self.weights1_2[k][l] = self.weights1_2[k][l] - constante * nab_E_w1
+	
+	def train_1(self, IN, T, tour):
+		constante = 0.9 #TODO
+		nab_E_s = self.outs_1[tour][0][0] - T
+		nab_s_z = 1 / (2 * np.abs(self.outs_1[tour][0][0]))
+		nab_E_w2 = self.hids_1[tour] * nab_E_s * nab_s_z
+		self.weights2_1 -= constante * nab_E_w2
+		for k in range(self.NB_HIDDEN_1):
+			nab_E_h = self.weights2_1[0][k] * (self.outs_1[tour][0][0] - T) / (2 * np.abs(self.outs_1[tour][0][0]) )
+			for l in range(self.DIM_IN_1):
+				nab_h_w1 = IN[0][l] / (2 * np.abs(self.hids_1[tour][0][k]))
+				nab_E_w1 = nab_E_h * nab_h_w1
+				self.weights1_1[k][l] = self.weights1_1[k][l] - constante * nab_E_w1
+
+	def backprop_1(self, manche):
+		decalage = np.abs(self.joueur.index - manche.lePremier)
+		gamma = 0.8
+		if manche.winner == self.joueur.index % 2:
+			R = 300
+		else:
+			R = -300 
+		for k in range(len(self.ins_1)):
+			try:
+				target = gamma * self.Qs_1[k + 1]
+			except: #Dernier tour
+				target = R
+			E = np.abs(target - self.Qs_1[k])
+			self.train_1(self.ins_1[k], target, k)
+		
+
+	def backprop1_2(self, manche): #Version avec récompense pour les plis.
+		gamma = 0.8 #TODO
+		for k in range(8):
+			R = 0
+			q = self.Qs_2[k]
+			if k < 7:			
+				nq = self.Qs_2[k + 1]
+			else:
+				nq = 0 #TODO ?? Vraiment 0 ?
+				if manche.winner == self.joueur.index % 2:
+					R += 300
+				else:
+					R -= 300	
+			pli = manche.plis[k][2]
+			t = manche.plis[k][1].index % 2
+			if t == self.joueur.index % 2:
+				signe = 1
+			else:
+				signe = -1
+			R += signe * compteLesPuntos(pli)
+			target = R + gamma * nq
+			E = np.abs(target - nq) #L'erreur. (à constante multiplicative près)
+			self.train_2(self.ins_2[k], target, k)	
+
+	def backprop2_2(self, manche): #Version avec récompense uniquement sur la victoire.
+		gamma = 0.8 #TODO
+		for k in range(8):
+			R = 0
+			q = self.Qs_2[k]
+			if k < 7:			
+				nq = self.Qs_2[k + 1] # = max(Q(t+1,a))
+			else:
+				nq = 0 # TODO ?? Vraiment 0 ?
+				if manche.winner == self.joueur.index % 2:
+					R += 500
+				else:
+					R -= 500
+			target = R + gamma * nq
+			E = np.abs(target - q)
+			self.train_2(self.ins_2[k], target, k)
 
 class NNFactory: #TODO c'est pratique, quand même
         TYPE_RL = 0
@@ -790,7 +1116,7 @@ class NNFactory: #TODO c'est pratique, quand même
 
 
 def lesJoueurs():
-    j1 = Joueur(0, None, "BOT 0", NNLBot())
+    j1 = Joueur(0, None, "BOT 0", QNN())
     j2 = Joueur(1, None, "BOT 1 - Sarkis", Sarkis())
     j3 = Joueur(2, j1, "BOT 2 - Sarkis", Sarkis())
     j4 = Joueur(3, j2, "BOT 3 - Sarkis", Sarkis())
@@ -828,6 +1154,7 @@ class PasseException(Exception):
 		pass
 
 def encheres(joueurs, manche, premier): #TODO, contre, surcontre, (capot generalise ?), redistribution
+    manche.lePremier = premier #TODO c'est moche !
     passe = 0
     capot = passe
     rustine = False
@@ -835,12 +1162,8 @@ def encheres(joueurs, manche, premier): #TODO, contre, surcontre, (capot general
     encheresLog = [enchereActuelle]
     manche.encheresLog = encheresLog
     i = premier #TODO
-    #print(joueurs[0].main)
     while (passe != 3 and capot == False):
         enchereDuJoueur = joueurs[i].annoncer(manche)
-        #print(enchereDuJoueur)
-        #print(enchereDuJoueur)
-        #print("\n")
         if enchereDuJoueur[1] == enchereActuelle[1]:
             passe += 1
             if passe == 3 and enchereDuJoueur == (-1, 70 , "NoColor") and rustine == False: #TODO Rustine. Urgent.
@@ -861,8 +1184,6 @@ def encheres(joueurs, manche, premier): #TODO, contre, surcontre, (capot general
         raise PasseException
 
 def uneCarte(g):
-    #print("Le tour du joueur : " + g.name)
-    #print(g.main)
     ncarte = input("Quelle carte jouer ?")
     carte = g.main[int(ncarte)]
     g.main.remove(carte)
@@ -872,6 +1193,8 @@ def lejeu(joueurs, manche, premier):
     tour = 1
     plis1 = []
     plis2 = []
+
+    
     while tour <= 8:
         #print('-'*20)
         #print("\n")
@@ -905,7 +1228,7 @@ def lejeu(joueurs, manche, premier):
             plis2.append(cartesdutour)
         else:
             plis1.append(cartesdutour)
-        manche.plis.append((joueurs[0].index, j, cartesdutour)) #Joueur qui a commencé, Joueur qui a gagné le pli, cartes.
+        manche.plis.append((joueurs[premier].index, j, cartesdutour)) #Joueur qui a commencé, Joueur qui a gagné le pli, cartes.
         premier = j
         tour += 1
     nj = manche.enchere[1] #Qui a pris ?
@@ -928,10 +1251,8 @@ def lejeu(joueurs, manche, premier):
         else:
             manche.winner = 0
             manche.points = 162 - points
-    for k in joueurs:
-        k.JAIPADENOM.end(manche.winner, manche.points) #TODO NN
-    #print(manche.winner)
-    #print(manche.points)
+    for j in joueurs:
+        j.end(manche)
 
 def compteLesPuntos(desPlis):
     value = 0
@@ -1024,14 +1345,14 @@ def cartesJouables(j, manche): #TODO nettoyer j.
 
 
 
-def fitness(joueur,n=1000): #Win rate against Sarkis Team. (En théorie, ça peut faire 0 partie, lol)
+def fitness(joueur,n=1000): #Win rate against Sarkis Team. (En théorie, ça peut faire 0 partie, lol).
+	temp = joueur.index
 	wins = 0
 	j1 = Joueur(1, None, "S0", Sarkis())
 	j2 = Joueur(2, None, "S1", Sarkis())
 	j3 = Joueur(3, j1, "S2", Sarkis())
-	joueur.index = 0 #Cf ca commence à 0, c'est donc le dernier joueur.
+	joueur.index = 0
 	joueur.partenaire = j2
-	
 	j1.partenaire = j3
 	j2.partenaire = joueur
 	js = [joueur, j1, j2, j3]
@@ -1046,23 +1367,12 @@ def fitness(joueur,n=1000): #Win rate against Sarkis Team. (En théorie, ça peu
 		except PasseException as pe:
 			passe = True
 			n -= 1
-			for k in js: #TODO Voir plus bas, et en plus, c'est peut-être pas nécessaire.
-				if type(k) == Sarkis:
-					k.JAIPADENOM.end(1,4)
 		if passe == False:
 			lejeu(js, manche, k % 4)
 			if manche.winner == joueur.index%2:
 				wins += 1
-	print(n)	
+	joueur.index = temp
 	return wins / n
-
-
-def test():#efface trkl
-	manche = Manche(g)
-	manche.pack=createDeck(manche)
-	
-	print(manche.pack.cartes)
-
 
 ##
 #g = lesJoueurs()
@@ -1077,9 +1387,6 @@ def test():#efface trkl
 #	except:
 #		print("4 passes")
 #		flag = True
-#		for k in g:#Scotch TODO BENJAMIIIIIIIIN !!!!! Skreugneugneu.
-#			if type(k) == Sarkis:
-#				k.JAIPADENOM.end(1,4)
 #	if not flag:	
 #		lejeu(g, manche)
 
@@ -1091,9 +1398,7 @@ def training(num):
 		if t % 50000 == 0:
 			temp = [t]
 			for k in g:
-				i_temp = k.index
 				f = fitness(k)
-				k.index = i_temp
 				temp.append((k.index, f))
 			fitnessLog.append(temp)
 		gc.collect()
@@ -1107,22 +1412,20 @@ def training(num):
 			encheres(g, manche, t % 4)
 		except PasseException as pe:
 			passe = True
-			for k in g:#TODO Pareil.
-				if type(k) == Sarkis:
-					k.JAIPADENOM.end(1,4)
 		if passe == False:
 			lejeu(g, manche, t % 4)
-			for k in g:
-				k.JAIPADENOM.backpropbis(manche)
-				k.JAIPADENOM.clear() #TODO vérifier
 	pack(fitnessLog, "FITNESS - TEST NO " + str(num) + ".tipe")
 	pack(g, "JOUEURS - TEST NO " + str(num) + ".tipe")
 
 
+#TODO passer le t % 4 en interne !
+
 #Foot notes : Un seul Sarkis est nécessaire dans l'absolu => On peut encore optimiser en lui passant plusieurs mains.
-# TEST NO 1 - 4 NNL en renforcement - 205/410/2 - 10E6 games "Vanilla" | Résultat : 8% de winrate au mieux. Bof... On remarque quand même que le winrate est croissant !
+# TEST NO 1 - 4 NNL en renforcement - 205/410/2 - 10E6 games "Vanilla" | Résultat : 8% de winrate au mieux. Bof... On remarque quand même que le winrate est croissant !
 # TEST NO 2 - 1 NNL + 3 SARKIS - 205/410/2 - 10E6 games (Notes : juste après que Benjamin a modifié le code...) | Résultat : 6% de winrate à t = 0, puis environ 45% à t = 50000, puis environ 45% tout le temps. (PS : Le fichier est vachement lourd... TODO trouver pourquoi)
 # TEST NO 3 - NNL/SARKIS VS NNL/SARKIS - 205/410/2 - 10E6 games | Résultats très inégaux, vraisemblablement dû au fait que les mains ne tournent pas (et au milliard d'erreurs dans le code)
 #Notes : jusque là tests avec code impropre.
 #A partir de là, Benjamin a touché à la relation d'ordre...
-# TEST NO 4 - 1NNL + 3 SARKIS - 205/410/2 - 10E6 games, après rectification d'une partie du code. IN.append(0). Main tournante.
+#A partir d'ici, plein de corrections ont été faites. Code pseudo-correct.
+# TEST NO 4 - 1 QNN + 3 SARKIS - 10E6 games. | On remarque que c'est VRAIMENT très très lent, vivement la version produit matriciel.
+
