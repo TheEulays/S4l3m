@@ -1,0 +1,4 @@
+http://www.wolframalpha.com/input/?i=plot+((170-y)%2F90)((2x-y%2B170))%2F(680)),+x%3D80..170,+y%3D80..170
+http://www.wolframalpha.com/input/?i=plot+(90-(y-x))%2F90*(x%2F170)+%2F12+,x%3D0..170+y%3D80..170
+http://www.wolframalpha.com/input/?i=plot+((-170-y-340)%2F(680)*(x-y)%2F170)**0.1,+x%3D0..170,+y%3D80..170
+http://www.wolframalpha.com/input/?i=plot+((1.6x%2By-570)%2F(680)*(y-x)%2F90,+x%3D80..170,+y%3D80..170
